@@ -57,10 +57,10 @@ input-11.csv
 
 ## Installing
 
-Run go's install subcommand to build and install gocsv-padsplits to GOPATH/bin:
+Run go's install subcommand to install gocsv-padsplits to GOPATH/bin:
 
 ```sh
-% go install
+% go install github.com/zacharysyoung/gocsv-padsplits@latest
 % which gocsv-padsplits
 /***/***/go/bin/gocsv-padsplits
 ```
