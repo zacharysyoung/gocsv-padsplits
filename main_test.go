@@ -118,7 +118,7 @@ func read(path string) (data string, err error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", errors.New("no such file or directory exists")
+			return "", fmt.Errorf("%s: no such file or directory", filepath.Base(path))
 		} else {
 			return "", err
 		}
