@@ -9,6 +9,40 @@ import (
 	"testing"
 )
 
+func TestMove(t *testing.T) {
+	const data = "foo bar baz"
+
+	var (
+		tmpdir = t.TempDir()
+		filea  = filepath.Join(tmpdir, "a")
+		fileb  = filepath.Join(tmpdir, "b")
+	)
+
+	if err := write(filea, data); err != nil {
+		t.Fatalf("could not write filea: %v", err)
+	}
+	if err := move(filea, fileb); err != nil {
+		t.Fatalf("could not move filea to fileb: %v", err)
+	}
+	bdata, err := read(fileb)
+	if err != nil {
+		t.Fatalf("could not read fileb: %v", err)
+	}
+
+	if bdata != data {
+		t.Errorf("bdata = %q; want %q", bdata, data)
+	}
+
+	names, err := getEntryNames(tmpdir)
+	if err != nil {
+		t.Fatalf("could not get entry names: %v", err)
+	}
+
+	if len(names) != 1 || names[0] != filepath.Base(fileb) {
+		t.Errorf("got the following names for tmpdir: %v; want %s", names, fileb)
+	}
+}
+
 var (
 	files = map[int]string{
 		1:  "a\n",
@@ -26,58 +60,84 @@ var (
 	ords = []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 )
 
-// data concatenates the header line, "I", and the string-data
+// fileData concatenates the header line, "I", and the string-data
 // for the file at fileOrd.
-func data(fileOrd int) string {
+func fileData(fileOrd int) string {
 	return "I\n" + files[fileOrd]
 }
 
+// TestPadSplits tests the end-to-end process: mimicking the
+// creation of 11 CSV files (as if from gocsv split), calling
+// padSplits, and verifing that only the correct padded names
+// with their correct data exist.
 func TestPadSplits(t *testing.T) {
 	tmpdir := t.TempDir()
 
 	for _, num := range ords {
 		name := fmt.Sprintf("input-%d.csv", num)
-		f, err := os.Create(filepath.Join(tmpdir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		f.WriteString(data(num))
-		if err := f.Close(); err != nil {
-			t.Fatal(err)
-		}
+		write(filepath.Join(tmpdir, name), fileData(num))
 	}
 
 	padSplits(filepath.Join(tmpdir, "input-"))
 
-	// Get reference list of files after padSplits, for error reporting
-	refEntries, err := os.ReadDir(tmpdir)
+	refNames, err := getEntryNames(tmpdir)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("could not get list of names in tmpdir: %v", err)
 	}
-	refNames := make([]string, 0)
-	for _, x := range refEntries {
-		refNames = append(refNames, x.Name())
+
+	if len(refNames) != 11 {
+		t.Fatalf("after calling padSplits got %d entries in tmpdir, %v; want 11", len(refNames), refNames)
 	}
 
 	for _, num := range ords {
 		name := fmt.Sprintf("input-%02d.csv", num) // hard-code %02d because only 11 files
 		path := filepath.Join(tmpdir, name)
 
-		b, err := os.ReadFile(path)
+		got, err := read(path)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				t.Errorf("tried to open %s amongst %v: no such file or directory", name, refNames)
-			} else {
-				t.Errorf("tried to open %s amongst %v: %v", name, refNames, err)
-			}
+			t.Errorf("could not read file %s amongst %v: %v", name, refNames, err)
 			continue
 		}
 
-		got := string(b)
-		want := data(num)
-
-		if got != want {
-			t.Errorf("for %s, got %s; want %s", name, got, want)
+		if want := fileData(num); got != want {
+			t.Errorf("for file %s, got %s; want %s", name, got, want)
 		}
 	}
+}
+
+func write(path, data string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	f.WriteString(data)
+	return f.Close()
+}
+
+func read(path string) (data string, err error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", errors.New("no such file or directory exists")
+		} else {
+			return "", err
+		}
+	}
+
+	return string(b), nil
+}
+
+// getEntryNames returns the base names rooted at tmpdir.
+func getEntryNames(tmpdir string) ([]string, error) {
+	names := make([]string, 0)
+
+	entries, err := os.ReadDir(tmpdir)
+	if err != nil {
+		return names, err
+	}
+	for _, x := range entries {
+		names = append(names, filepath.Base(x.Name()))
+	}
+
+	return names, nil
 }
